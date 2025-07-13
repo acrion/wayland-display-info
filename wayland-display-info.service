@@ -1,0 +1,16 @@
+[Unit]
+Description=Wayland Display‑Info monitor — keeps /var/cache/wayland-display-info/display-info up to date
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/wayland-display-info/wayland-display-info
+Restart=on-failure
+RestartSec=3s
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

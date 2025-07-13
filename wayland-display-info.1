@@ -1,0 +1,44 @@
+.TH WAYLAND-DISPLAY-INFO 1 "July 2025" "1.0.0" "User Commands"
+.SH NAME
+wayland-display-info \- monitor Wayland outputs and write /var/cache/wayland-display-info/display-info
+.SH SYNOPSIS
+.B wayland-display-info
+.SH DESCRIPTION
+.B wayland-display-info
+continuously queries wlroots compositors via the
+.BR wlr-output-management
+protocol and writes one line per connected output to the cache file.
+
+.PP
+The DPI figure reflects the actual visible pixel density:
+
+.IP \[bu] 2
+\fBRotation neutral\fR – rotating a monitor by 90 ° or 270 ° does not change its
+pixel density, so no adjustment is necessary.
+
+.IP \[bu] 2
+\fBLetter-/pillar-boxing aware\fR – if the chosen mode’s aspect ratio differs
+from the panel’s native ratio and the compositor adds black bars, the daemon
+reports the larger of the horizontal or vertical DPI, keeping the value stable
+for the fully used axis.
+
+.PP
+Each output line has the format
+
+.PP
+\fBOUTPUT_NAME DPI WIDTH_PX HEIGHT_PX\fR
+
+.PP
+The file is updated whenever monitors are hot-plugged or display parameters
+change.
+.SH FILES
+.I /var/cache/wayland-display-info/display-info
+.SH SEE ALSO
+.BR wayland-font-dpi (1)
+.SH EXAMPLES
+.B Check service status
+.PP
+.nf
+systemctl --user status wayland-display-info.service
+cat /var/cache/wayland-display-info/display-info
+.fi
