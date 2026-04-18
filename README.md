@@ -7,12 +7,13 @@ compositor through the **wlr-output-management** protocol and keeps the file
 /var/cache/wayland-display-info/display-info
 ```
 
-up-to-date.  Each line describes a connected output in the form
+up-to-date. Each line describes a connected output in the form:
 
 ```
 <OUTPUT_NAME> <DPI> <WIDTH_PX> <HEIGHT_PX>
+```
 
-````
+**Note:** The output lines are automatically sorted in descending order by the physical size (diagonal) of the displays. This ensures that your largest (and often primary) screen is listed first.
 
 ---
 
@@ -20,7 +21,7 @@ up-to-date.  Each line describes a connected output in the form
 
 * **Letter-/Pillar-boxing aware** – when the selected mode’s aspect ratio differs
   from the panel’s native ratio and the compositor inserts black bars, the
-  daemon reports the *larger* of the horizontal or vertical DPI.  
+  daemon reports the *larger* of the horizontal or vertical DPI.
   This keeps the figure constant for the axis that is fully utilised, so the
   value always reflects the density of the visible image.
 * **Rotation neutral** – a panel rotated by 90 ° or 270 ° still shows the same
@@ -35,7 +36,7 @@ up-to-date.  Each line describes a connected output in the form
 
 ```bash
 pikaur -S wayland-display-info
-````
+```
 
 The PKGBUILD installs
 

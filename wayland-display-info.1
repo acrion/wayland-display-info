@@ -1,4 +1,4 @@
-.TH WAYLAND-DISPLAY-INFO 1 "July 2025" "1.0.0" "User Commands"
+.TH WAYLAND-DISPLAY-INFO 1 "April 2026" "1.0.6" "User Commands"
 .SH NAME
 wayland-display-info \- monitor Wayland outputs and write /var/cache/wayland-display-info/display-info
 .SH SYNOPSIS
@@ -10,20 +10,24 @@ continuously queries wlroots compositors via the
 protocol and writes one line per connected output to the cache file.
 
 .PP
+The written lines are automatically \fBsorted in descending order by the physical size\fR
+(diagonal) of the displays. This ensures the largest monitor is listed first.
+
+.PP
 The DPI figure reflects the actual visible pixel density:
 
 .IP \[bu] 2
-\fBRotation neutral\fR – rotating a monitor by 90 ° or 270 ° does not change its
+\fBRotation neutral\fR \(en rotating a monitor by 90 \(de or 270 \(de does not change its
 pixel density, so no adjustment is necessary.
 
 .IP \[bu] 2
-\fBLetter-/pillar-boxing aware\fR – if the chosen mode’s aspect ratio differs
+\fBLetter-/pillar-boxing aware\fR \(en if the chosen mode’s aspect ratio differs
 from the panel’s native ratio and the compositor adds black bars, the daemon
 reports the larger of the horizontal or vertical DPI, keeping the value stable
 for the fully used axis.
 
 .PP
-Each output line has the format
+Each output line has the format:
 
 .PP
 \fBOUTPUT_NAME DPI WIDTH_PX HEIGHT_PX\fR

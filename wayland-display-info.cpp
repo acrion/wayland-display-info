@@ -1,4 +1,4 @@
-// Copyright (c) 2025 acrion innovations GmbH
+// Copyright (c) 2025-2026 acrion innovations GmbH
 // Authors: Stefan Zipproth, s.zipproth@acrion.ch
 //
 // This file is part of wayland-display-info, see https://github.com/acrion/wayland-display-info
@@ -26,7 +26,6 @@
 #include <wayland-client.h>
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -36,6 +35,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -66,6 +66,10 @@ static zwlr_output_manager_v1 *g_manager                    = nullptr;
 static std::map<zwlr_output_head_v1 *, HeadData> g_heads;
 static std::map<zwlr_output_mode_v1 *, ModeInfo> g_modes;
 
+static wl_registry *g_registry                              = nullptr;
+static uint32_t g_manager_name                              = 0;
+static uint32_t g_manager_version                           = 0;
+
 /* --------------------- LOGGING HELPER --------------------- */
 static void log(const std::string &msg) {
     std::cerr << "[wayland-display-info] " << msg << "\n";
@@ -78,8 +82,15 @@ static void write_display_info();
 static void mode_handle_size(void *, zwlr_output_mode_v1 *m, int32_t w, int32_t h) { g_modes[m] = {w, h}; }
 static void mode_handle_refresh(void *, zwlr_output_mode_v1 *, int32_t) {}
 static void mode_handle_preferred(void *, zwlr_output_mode_v1 *) {}
-static void mode_handle_finished(void *, zwlr_output_mode_v1 *) {}
-static const zwlr_output_mode_v1_listener kModeL = {mode_handle_size, mode_handle_refresh, mode_handle_preferred, mode_handle_finished};
+
+static void mode_handle_finished(void *, zwlr_output_mode_v1 *m) {
+    g_modes.erase(m);
+    zwlr_output_mode_v1_destroy(m);
+}
+
+static const zwlr_output_mode_v1_listener kModeL = {
+    mode_handle_size, mode_handle_refresh, mode_handle_preferred, mode_handle_finished
+};
 
 /* ----------------------------- HEAD LISTENER ----------------------------- */
 #define HD(x) g_heads[static_cast<zwlr_output_head_v1 *>(d)].x
@@ -94,17 +105,24 @@ static void head_handle_current_mode(void *d, zwlr_output_head_v1 *, zwlr_output
 static void head_handle_position(void *, zwlr_output_head_v1 *, int32_t, int32_t) {}
 static void head_handle_transform(void *d, zwlr_output_head_v1 *, int32_t t) { HD(transform) = t; }
 static void head_handle_scale(void *, zwlr_output_head_v1 *, wl_fixed_t) {}
-static void head_handle_finished(void *, zwlr_output_head_v1 *) {}
+
+static void head_handle_finished(void *, zwlr_output_head_v1 *h) {
+    g_heads.erase(h);
+    zwlr_output_head_v1_destroy(h);
+}
+
 static void head_handle_make(void *, zwlr_output_head_v1 *, const char *) {}
 static void head_handle_model(void *, zwlr_output_head_v1 *, const char *) {}
 static void head_handle_serial(void *, zwlr_output_head_v1 *, const char *) {}
 static void head_handle_adaptive_sync(void *, zwlr_output_head_v1 *, uint32_t) {}
 #undef HD
+
 static const zwlr_output_head_v1_listener kHeadL = {
     /* order! */
     head_handle_name, head_handle_description, head_handle_physical_size, head_handle_mode, head_handle_enabled,
     head_handle_current_mode, head_handle_position, head_handle_transform, head_handle_scale, head_handle_finished,
-    head_handle_make, head_handle_model, head_handle_serial, head_handle_adaptive_sync};
+    head_handle_make, head_handle_model, head_handle_serial, head_handle_adaptive_sync
+};
 
 /* ----------------------- MANAGER LISTENER ----------------------- */
 static void manager_handle_head(void *, zwlr_output_manager_v1 *, zwlr_output_head_v1 *h) {
@@ -112,16 +130,52 @@ static void manager_handle_head(void *, zwlr_output_manager_v1 *, zwlr_output_he
     zwlr_output_head_v1_add_listener(h, &kHeadL, h);
 }
 static void manager_handle_done(void *, zwlr_output_manager_v1 *, uint32_t) { write_display_info(); }
-static const zwlr_output_manager_v1_listener kManagerL = {manager_handle_head, manager_handle_done};
+
+static void manager_handle_finished(void *, zwlr_output_manager_v1 *m);
+
+static const zwlr_output_manager_v1_listener kManagerL = {
+    manager_handle_head,
+    manager_handle_done,
+    manager_handle_finished
+};
+
+static void manager_handle_finished(void *, zwlr_output_manager_v1 *m) {
+    zwlr_output_manager_v1_destroy(m);
+    if (g_manager == m) g_manager = nullptr;
+
+    for (const auto &[head, hd] : g_heads) zwlr_output_head_v1_destroy(head);
+    g_heads.clear();
+
+    for (const auto &[mode, mi] : g_modes) zwlr_output_mode_v1_destroy(mode);
+    g_modes.clear();
+
+    if (g_registry && g_manager_name) {
+        g_manager = static_cast<zwlr_output_manager_v1 *>(wl_registry_bind(
+            g_registry, g_manager_name, &zwlr_output_manager_v1_interface, g_manager_version));
+        zwlr_output_manager_v1_add_listener(g_manager, &kManagerL, nullptr);
+    }
+}
 
 /* ------------------------- REGISTRY HELPER ------------------------- */
 static void registry_global(void *, wl_registry *reg, uint32_t name, const char *iface, uint32_t ver) {
     if (strcmp(iface, zwlr_output_manager_v1_interface.name) == 0) {
-        g_manager = static_cast<zwlr_output_manager_v1 *>(wl_registry_bind(reg, name, &zwlr_output_manager_v1_interface, std::min<uint32_t>(ver, 3)));
-        zwlr_output_manager_v1_add_listener(g_manager, &kManagerL, nullptr);
+        g_registry = reg;
+        g_manager_name = name;
+        g_manager_version = std::min<uint32_t>(ver, 3);
+
+        if (!g_manager) {
+            g_manager = static_cast<zwlr_output_manager_v1 *>(wl_registry_bind(reg, name, &zwlr_output_manager_v1_interface, g_manager_version));
+            zwlr_output_manager_v1_add_listener(g_manager, &kManagerL, nullptr);
+        }
     }
 }
-static void registry_global_remove(void *, wl_registry *, uint32_t) {}
+
+static void registry_global_remove(void *, wl_registry *, uint32_t name) {
+    if (name == g_manager_name) {
+        g_manager_name = 0;
+    }
+}
+
 static const wl_registry_listener kRegistryL = {registry_global, registry_global_remove};
 
 /* --------------------- ATOMIC FILE WRITER --------------------- */
@@ -129,6 +183,12 @@ static void write_display_info() {
     namespace fs = std::filesystem;
     std::ofstream f(kTmpPath, std::ios::trunc);
     if (!f) { std::perror("tmp"); return; }
+
+    struct OutputEntry {
+        double diag_mm;
+        std::string line;
+    };
+    std::vector<OutputEntry> entries;
 
     for (const auto &[head, hd] : g_heads) {
         if (!hd.enabled || hd.name.empty() || !hd.current_mode) continue;
@@ -139,13 +199,27 @@ static void write_display_info() {
 
         // information if the display is rotated might be useful for future version - currently, it is irrelevant
         // const bool rotated = (hd.transform % 2) == 1;             // 90°/270° (+flipped)
-        
+
         const double dpi_x = static_cast<double>(mi.width_px)  / (hd.width_mm  / 25.4);
         const double dpi_y = static_cast<double>(mi.height_px) / (hd.height_mm / 25.4);
         const double dpi   = std::max(dpi_x, dpi_y);
 
-        f << hd.name << ' ' << std::fixed << std::setprecision(2) << dpi << ' ' << mi.width_px << ' ' << mi.height_px << '\n';
+        const double diag_mm = std::hypot(hd.width_mm, hd.height_mm);
+
+        std::ostringstream oss;
+        oss << hd.name << ' ' << std::fixed << std::setprecision(2) << dpi << ' ' << mi.width_px << ' ' << mi.height_px << '\n';
+
+        entries.push_back({diag_mm, oss.str()});
     }
+
+    std::sort(entries.begin(), entries.end(),[](const OutputEntry &a, const OutputEntry &b) {
+        return a.diag_mm > b.diag_mm;
+    });
+
+    for (const auto &entry : entries) {
+        f << entry.line;
+    }
+
     f.close();
     std::error_code ec; std::filesystem::rename(kTmpPath, kCachePath, ec);
     if (ec) std::perror("rename");
@@ -208,7 +282,11 @@ int main() {
         if (wl_display_dispatch(g_display) == -1) {
             log("Wayland connection lost – reconnecting…");
             wl_display_disconnect(g_display);
-            g_display = nullptr; g_manager = nullptr; g_heads.clear(); g_modes.clear();
+
+            g_display = nullptr; g_manager = nullptr; g_registry = nullptr;
+            g_manager_name = 0; g_manager_version = 0;
+            g_heads.clear(); g_modes.clear();
+
             connect_until_success();
         }
     }
