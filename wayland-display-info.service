@@ -1,7 +1,7 @@
 [Unit]
-Description=Wayland Display‑Info monitor — keeps /var/cache/wayland-display-info/display-info up to date
+Description=Wayland Display-Info monitor — keeps /var/cache/wayland-display-info/display-info up to date
 After=graphical-session.target
-Wants=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
 Type=simple
