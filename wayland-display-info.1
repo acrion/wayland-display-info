@@ -26,6 +26,11 @@ from the panel’s native ratio and the compositor adds black bars, the daemon
 reports the larger of the horizontal or vertical DPI, keeping the value stable
 for the fully used axis.
 
+.IP \[bu] 2
+\fBOutputs lacking a usable physical size are left out\fR: if the compositor
+reports a width or height of 0 mm, no DPI can be computed. Such an output is not
+written to the file, and the daemon logs its name once.
+
 .PP
 Each output line has the format:
 

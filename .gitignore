@@ -23,3 +23,4 @@ Thumbs.db
 *-protocol.h
 *.o
 wayland-display-info
+display-metrics-test

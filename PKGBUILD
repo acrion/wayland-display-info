@@ -1,7 +1,7 @@
 # Maintainer: Stefan Zipproth <s.zipproth@acrion.ch>
 
 pkgname=wayland-display-info
-pkgver=1.0.8
+pkgver=1.0.9
 pkgrel=1
 pkgdesc="Daemon that keeps /var/cache/wayland-display-info/display-info up to date using wlr-output-management"
 arch=('any')
@@ -9,11 +9,15 @@ url="https://github.com/acrion/wayland-display-info"
 license=('AGPL3')
 depends=('systemd')
 makedepends=('wayland' 'gcc' 'pkgconf' 'wlr-protocols')
+checkdepends=('doctest')
 install="${pkgname}.install"
 source=(
     "wayland-display-info.cpp"
+    "display-metrics.hpp"
+    "display-metrics.test.cpp"
     "generate-protocol-stubs.sh"
     "build.sh"
+    "test.sh"
     "wayland-display-info.service"
     "wayland-display-info.1"
     "wayland-display-info.install"
@@ -23,8 +27,11 @@ source=(
 )
 sha256sums=(
     'SKIP' # wayland-display-info.cpp
+    'SKIP' # display-metrics.hpp
+    'SKIP' # display-metrics.test.cpp
     'SKIP' # generate-protocol-stubs.sh
     'SKIP' # build.sh
+    'SKIP' # test.sh
     'SKIP' # wayland-display-info.service
     'SKIP' # wayland-display-info.1
     'SKIP' # wayland-display-info.install
@@ -37,6 +44,11 @@ build() {
     cd "${srcdir}"
     ./generate-protocol-stubs.sh
     ./build.sh
+}
+
+check() {
+    cd "${srcdir}"
+    ./test.sh
 }
 
 package() {

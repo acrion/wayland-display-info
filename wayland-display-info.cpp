@@ -17,7 +17,7 @@
 // along with wayland-display-info. If not, see <https://www.gnu.org/licenses/>.
 //
 // Continuously mirrors live outputs information to /var/cache/wayland-display-info/display-info.
-// Starts even if the compositor/socket is not yet ready: it retries every 500 ms.
+// Starts even if the compositor/socket is not yet ready: it retries every 500 ms.
 
 // Writes /var/cache/wayland-display-info/display-info as soon as *any* Wayland display
 // socket appears (even if $WAYLAND_DISPLAY was missing when the service started).
@@ -35,10 +35,13 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "display-metrics.hpp"
 
 extern "C" {
 #include "zwlr-output-management-unstable-v1-client-protocol.h"
@@ -65,6 +68,10 @@ static wl_display *g_display                                = nullptr;
 static zwlr_output_manager_v1 *g_manager                    = nullptr;
 static std::map<zwlr_output_head_v1 *, HeadData> g_heads;
 static std::map<zwlr_output_mode_v1 *, ModeInfo> g_modes;
+
+// Outputs omitted from display-info for their physical size, by name.
+// Every hotplug event rewrites the file, so each name is logged only once.
+static std::set<std::string> g_reported_without_dpi;
 
 static wl_registry *g_registry                              = nullptr;
 static uint32_t g_manager_name                              = 0;
@@ -195,19 +202,25 @@ static void write_display_info() {
         auto mi_it = g_modes.find(hd.current_mode);
         if (mi_it == g_modes.end()) continue;
         const auto &mi = mi_it->second;
-        if (mi.width_px == 0 || mi.height_px == 0 || hd.width_mm == 0) continue;
 
         // information if the display is rotated might be useful for future version - currently, it is irrelevant
         // const bool rotated = (hd.transform % 2) == 1;             // 90°/270° (+flipped)
 
-        const double dpi_x = static_cast<double>(mi.width_px)  / (hd.width_mm  / 25.4);
-        const double dpi_y = static_cast<double>(mi.height_px) / (hd.height_mm / 25.4);
-        const double dpi   = std::max(dpi_x, dpi_y);
+        const auto dpi = output_dpi(mi.width_px, mi.height_px, hd.width_mm, hd.height_mm);
+        if (!dpi) {
+            // A mode lacking a size yet is a transient state, not worth a
+            // message.
+            if (mi.width_px > 0 && mi.height_px > 0 && g_reported_without_dpi.insert(hd.name).second) {
+                log("Leaving out " + hd.name + ": its physical size of " + std::to_string(hd.width_mm) + "x" +
+                    std::to_string(hd.height_mm) + " mm gives no usable DPI");
+            }
+            continue;
+        }
 
         const double diag_mm = std::hypot(hd.width_mm, hd.height_mm);
 
         std::ostringstream oss;
-        oss << hd.name << ' ' << std::fixed << std::setprecision(2) << dpi << ' ' << mi.width_px << ' ' << mi.height_px << '\n';
+        oss << hd.name << ' ' << std::fixed << std::setprecision(2) << *dpi << ' ' << mi.width_px << ' ' << mi.height_px << '\n';
 
         entries.push_back({diag_mm, oss.str()});
     }

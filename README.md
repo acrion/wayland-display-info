@@ -27,6 +27,7 @@ up-to-date. Each line describes a connected output in the form:
 * **Rotation neutral** – a panel rotated by 90 ° or 270 ° still shows the same
   number of pixels on the same physical surface; therefore rotation has no
   effect on pixel density and requires no special handling.
+* **Outputs without a usable physical size are left out** – when the compositor reports a width or height of 0 mm, no DPI can be computed. Such an output is not written to the file, and the daemon logs its name once.
 
 ---
 
